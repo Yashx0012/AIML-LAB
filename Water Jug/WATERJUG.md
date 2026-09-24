@@ -154,3 +154,133 @@ Step 0: Start                              -> (0,0)
 Step 1: Fill Jug 1                         -> (4,0)
 Step 2: Transfer water from Jug 1 to Jug 2 -> (1,3)
 ```
+
+## 6. The Full DFS Loop — Line by Line
+
+This is the complete `while` loop that drives the search, including a
+**second visited-set check** that the earlier Q2 snippet didn't have. It's
+worth understanding on its own because it shows *two different places*
+where `visited` gets used, and why both are needed.
+
+```python
+visited = set()
+
+    while stack:
+        current_state, path = stack.pop()
+
+        if current_state[0] == target or current_state[1] == target:
+            return path
+
+        if current_state in visited:
+            continue
+        visited.add(current_state)
+
+        for next_state, action in condition(current_state, j1, j2):
+            if next_state not in visited:
+                new_path = path + [(next_state, action)]
+                stack.append((next_state, new_path))
+
+    return None
+```
+
+### 6.1 `visited = set()`
+
+- Creates an empty **set** to keep track of every state the algorithm has
+  already processed.
+- A `set` is used (not a list) because membership checks (`in`) on a set
+  are `O(1)` on average, versus `O(n)` for a list — important once the
+  number of visited states grows.
+
+### 6.2 `while stack:`
+
+- The main DFS loop. Keeps running as long as there are still unexplored
+  states sitting on the stack. Once the stack is empty, there's nothing
+  left to try.
+
+### 6.3 `current_state, path = stack.pop()`
+
+- `stack.pop()` removes and returns the **last** item that was pushed onto
+  the stack — this LIFO (Last In, First Out) behavior is exactly what makes
+  this DFS rather than BFS (which would use `pop(0)` or a queue instead).
+- Unpacks the popped tuple into `current_state` (the `(x, y)` jug volumes)
+  and `path` (the list of steps taken to reach it).
+
+### 6.4 `if current_state[0] == target or current_state[1] == target:`
+
+- **Goal check.** `current_state[0]` is Jug 1's volume, `current_state[1]`
+  is Jug 2's volume. If *either* jug currently holds exactly `target`
+  liters, the search is done.
+
+```python
+        return path
+```
+
+- Immediately exits the function and returns the full breadcrumb trail
+  that led to this winning state — this becomes the printed solution.
+
+### 6.5 The Second Visited Check (the new part)
+
+```python
+        if current_state in visited:
+            continue
+        visited.add(current_state)
+```
+
+- This is a **safety re-check performed after popping**, separate from the
+  check done later when generating neighbors (Section 2, Q2).
+- **Why is this needed even though neighbors are already filtered by
+  `visited` before being pushed?** Because the *same* state can be pushed
+  onto the stack **more than once** before it's ever popped — for example,
+  two different earlier states might both generate the same `next_state`
+  and each push a copy onto the stack before either copy gets processed.
+  Without this check, the algorithm would fully re-expand that duplicate
+  state's neighbors a second (or third) time, wasting work and potentially
+  never terminating cleanly in trickier graphs.
+- `if current_state in visited: continue` — if we've already fully
+  processed this exact state before, skip it entirely and go straight to
+  the next iteration of the `while` loop (do **not** expand its neighbors
+  again).
+- `visited.add(current_state)` — otherwise, mark this state as processed
+  *now*, right before expanding its neighbors, so any duplicate copies
+  still sitting on the stack will be caught by this same check when they're
+  eventually popped.
+
+### 6.6 Expanding Neighbors (same as Q2 in Section 2)
+
+```python
+        for next_state, action in condition(current_state, j1, j2):
+            if next_state not in visited:
+                new_path = path + [(next_state, action)]
+                stack.append((next_state, new_path))
+```
+
+- Calls `condition(current_state, j1, j2)` to generate every valid next
+  state (fill, empty, pour — see the operations table in Section 1).
+- For each candidate `next_state`, only pushes it onto the stack if it
+  hasn't already been visited — this is a **first, cheaper filter** that
+  avoids pushing obviously-redundant states, while Section 6.5's check acts
+  as the **final safety net** for the rare duplicate-in-stack case this
+  filter can't catch on its own.
+- `new_path = path + [(next_state, action)]` builds a new breadcrumb list
+  (current path plus this one new step) without mutating the original
+  `path`, so other branches of the search keep their own independent
+  history.
+- `stack.append(...)` pushes the new `(next_state, new_path)` pair onto the
+  top of the stack, to be explored later (LIFO order).
+
+### 6.7 `return None`
+
+- Sits **outside** the `while stack:` loop (correct indentation — see the
+  pitfall in Section 3). If the stack empties out without ever finding the
+  target, this line runs and tells the caller no solution exists.
+
+### 6.8 Why Two Visited Checks Instead of One?
+
+| Check | Where | Purpose |
+|---|---|---|
+| `if next_state not in visited:` (Section 6.6) | Before pushing a neighbor | Cheap early filter — avoids pushing states we already know we've seen |
+| `if current_state in visited: continue` (Section 6.5) | Right after popping | Final safety net — catches duplicate copies of the same state that slipped onto the stack before either was processed |
+
+Together, these two checks guarantee that **no state is ever fully
+re-expanded twice**, which keeps the search efficient and guarantees it
+will always terminate.
